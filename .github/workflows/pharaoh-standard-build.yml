@@ -1,0 +1,42 @@
+name: Pharaoh Standard Android Build
+on:
+  push:
+    branches: [pharaoh-build-fix]
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Restore Pharaoh source
+        shell: bash
+        run: |
+          curl -fsSL 'https://raw.githubusercontent.com/MattKoRn/dungeoneer/pharaoh-build-fix/.github/workflows/pharaoh-fixed-build.yml' -o /tmp/source.yml
+          python3 - <<'PY'
+          import re,base64,tarfile,os
+          s=open('/tmp/source.yml').read()
+          m=re.search(r"printf '%s' '([^']+)' \| base64 -d",s)
+          if not m: raise SystemExit('embedded source not found')
+          raw=base64.b64decode(m.group(1))
+          open('/tmp/pharaoh.tgz','wb').write(raw)
+          os.makedirs('pharaohbuild',exist_ok=True)
+          with tarfile.open('/tmp/pharaoh.tgz','r:gz') as t:t.extractall('pharaohbuild')
+          PY
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.10.2'
+      - name: Build
+        working-directory: pharaohbuild
+        run: gradle :app:assembleDebug --stacktrace
+      - name: Export APK
+        run: cp pharaohbuild/app/build/outputs/apk/debug/app-debug.apk pharaoh.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pharaoh-fixed-apk
+          path: pharaoh.apk
+          if-no-files-found: error
